@@ -1,0 +1,144 @@
+#Tutorial e algumas explicações
+"""
+
+    Para utilizar o código utilizando o Databricks é necessario primeiramente fazer o upload da pasta que voce deseja utilizar clicando na primeira linha acima da celula, no desenho de documento e depois clicar em fazer upload de arquivos, após selecionar a pasta que deseja fazer upload voce começara a utilizar o codigo. 
+   
+    Na parte do código, primeiramente voce devera importar as bibliotecas necessarias [1] , que nesse caso apenas importei a pyspark.sql.functions e coloquei o apelido de func, então toda vez que for utilizar um metodo dessa biblioteca, antes de colocar o metodo sera necessario colocar um func na frente. 
+   
+    Apos a importação das bibliotecas voce colocara o caminho da pasta que voce deseja na variavel path [2].
+   
+    Entao criar um dataframe e colocar uma função para ler os arquivos [3]. 
+   
+    Apos isso as colunas e os dataframes ja estão criados no codigo entao nao sera necessario se preocupar com isso [4]. 
+   
+    Apos tudo isso sera necessario unir as tabelas em uma tabela de referencia [5].
+   
+    Criar a views com os dataframes criados [6].
+   
+    Apos isso criar as tabelas realmente com os codigos que ja estao ali [7]. 
+   
+    O contador de palavras esta funcionando mas não esta totalmente implementado pois não é possivel ainda utiliza-lo como mecanismo de buscas [8]. 
+   
+    Para ver os resultados dos dataframes é necessario apenas tirar o '#' do dataframe que voce quer ver no final do codigo [9]. 
+   
+    Entao apenas rodar o script clicando no botao de seta e selecionando run cell, e então é esperado que todo o processo implementado até agora funcione.
+
+"""
+
+#Ainda não implementados
+"""
+
+    [A]Não consegui utilizar nenhuma cloud para fazer o upload dos arquivos por problemas de autenticação. 
+   
+    [B]Não consegui utilizar a função de limpar os dados pois o código não roda de forma correta, pelo menos nos testes não funcionou. 
+   
+    [C]Não conseguir implementar o mecanismo de buscas, talvez por não conseguir enxergar de forma correta como funcionaria, principalmente utilizando pyspark que é algo muito novo para mim.
+    
+"""
+
+#Bibliotecas importadas
+#[1]
+import pyspark.sql.functions as func
+
+#Caminho da pasta
+#[2]
+path = 'dbfs:/FileStore/shared_uploads/ricardo.evers@luby.com.br/a/test/*'
+
+
+#Ler arquivos e criar coluna 'lyrics'
+#[3]
+df = spark.read.text(path)\
+.withColumnRenamed('value', 'lyrics')\
+.withColumn('lyrics', func.lower(func.col('lyrics')))\
+.withColumn('song_name', func.input_file_name())
+
+
+#Separar por nome de arquivo
+#[4]
+songName = df.withColumn('song_name', func.input_file_name())\
+.withColumn('lyrics', func.col('lyrics'))\
+.groupBy('song_name')\
+.count()\
+.sort('count', ascending = False)\
+.select(func.col("song_name"))
+
+
+#Cria ID de cada arquivo
+#[4]
+songID = songName.withColumn("song_id", func.monotonically_increasing_id())\
+.select(func.col("song_name"), func.col('song_id'))
+
+
+#Contador de palavras
+#[8]
+wordCount = df.withColumn('word', func.explode(func.split(func.col('lyrics'), ' ')))\
+.groupBy('word')\
+.count()\
+.sort('count', ascending = False)
+
+
+#Cria DataFrame base para tabela de referencia
+#[5]
+referenceTable = songID.join(df, on='song_name')\
+.select(func.col('song_id'), func.col('song_name'), func.col('lyrics'))
+
+
+#Cria as Views
+#[6]
+df.createOrReplaceTempView("DF")
+songName.createOrReplaceTempView("SONGNAME")
+songID.createOrReplaceTempView("SONGID")
+wordCount.createOrReplaceTempView("WORDCOUNT")
+referenceTable.createOrReplaceTempView("REFERENCE")
+
+
+#Cria as tabelas
+#[7]
+df.write.format("parquet").mode('overwrite').saveAsTable("_LYRICS_TABLE")
+songName.write.format("parquet").mode('overwrite').saveAsTable("_SONGNAME_TABLE")
+songID.write.format("parquet").mode('overwrite').saveAsTable("_SONGID_TABLE")
+wordCount.write.format("parquet").mode('overwrite').saveAsTable("_WORDCOUNT_TABLE")
+referenceTable.write.format("parquet").mode('overwrite').saveAsTable("_REFERENCE_TABLE")
+
+#[9]
+#display(df)
+#display(songName)
+#display(songID)
+#display(wordCount)
+
+"""def clean(song):
+    # remove contractions
+    song = song.lower()
+    contractions = [
+        r"he's", r"he is",r"there's", r"there is",r"we're", r"we are",r"that's", r"that is",r"won't",
+        r"will not",r"they're", r"they are",r"can't", r"cannot",r"wasn't", r"was not",r"aren't", r"are not",
+        r"isn't", r"is not",r"what's", r"what is",r"haven't", r"have not",r"hasn't", r"has not",r"there's",
+        r"there is",r"he's", r"he is",r"it's", r"it is",r"you're", r"you are",r"i'm", r"i am",r"shouldn't",
+        r"should not",r"wouldn't", r"would not",r"i'm", r"i am",r"isn't", r"is not",r"here's", r"here is",
+        r"you've", r"you have",r"we're", r"we are",r"what's", r"what is",r"couldn't", r"could not",r"we've", 
+        r"we have",r"who's", r"who is",r"y'all", r"you all",r"would've", r"would have",r"it'll", r"it will",
+        r"we'll", r"we will",r"we've", r"we have",r"he'll", r"he will",r"y'all", r"you all",r"weren't",
+        r"were not",r"didn't", r"did not",r"they'll", r"they will",r"they'd", r"they would",r"don't", r"do n't",
+        r"they've", r"they have",r"i'd", r"i would",r"You\x89Ûªre", r"You are",r"where's", r"where is",r"we'd",
+        r"we would",r"i'll", r"i will",r"weren't", r"were not",r"they're", r"they are",r"let's", r"let us",
+        r"it's",r"it is",r"can't", r"cannot",r"don't", r"do not",r"you're", r"you are",r"i've", r"I have",
+        r"that's",r"that is",r"i'll", r"i will",r"doesn't", r"does not",r"i'd", r"i would",r"didn't", r"did not",
+        r"ain't", r"am not",r"you'll", r"you will",r"i've", r"i have",r"don't", r"do not",r"i'll", r"i will",
+        r"i'd", r"i would",r"let's", r"let us",r"you'd", r"you would",r"it's", r"it is",r"ain't", r"am not",
+        r"haven't", r"have not",r"could've", r"could have",r"youve", r"you have",r"ev'ry" ,r"every" ,r"coz" ,
+        r"because" ,r"n\'t" , r"not" ,r"that'll", r"that will", r"-", r"", r"[\.]+", r".",
+        r"\[[\sa-z0-9:-]*\]", r"\n\r\n", r"\n\n",r"\r\n", r"\n\n",r"\n\n\n\n", r"\n\n",r"\n\n\n",
+        r"\n\n",r"\n\n",r"\n", r"<LINE> ",r"â\x80\x98" , r"'" ,r"â\x80\x99" , r"'" ,r"â\x80¦",
+        r"", r"<LINE>", r"" ,r"<PARA>" , r"" , r"with", r"which", r"these",r"this",r"then",r"that",
+        r"what", r"where", r"when"]
+    
+    for regex in contractions:
+        song = song.replace(regex, "")
+    
+    # Words with punctuations and special characters
+    remove_punctions = "@#+&*-%/><`;=${}|^'[]:?!(),." + '"'
+    for p in remove_punctions:
+        song = song.replace(p , '')
+    return song
+
+"""
